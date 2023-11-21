@@ -16,13 +16,9 @@ private:
     const int maxAngle;
 
     void addEvent(EncoderEvent::Type type) {
-        if (event.type == type) {
-            if (event.count != 0xFF) {
-                event.count++;
-            }
-        } else {
+        if (event.type == EncoderEvent::None || event.type == type) {
             event.type = type;
-            event.count = 1;
+            event.count++;
         }
     }
 
@@ -33,7 +29,10 @@ public:
         pinMode(pinB, INPUT);
     }
 
-    void checkPins(bool pinAState, bool pinBState) {
+    void checkPins() {
+        bool pinAState = digitalRead(pinA);
+        bool pinBState = digitalRead(pinB);
+
         uint8_t state = (pinBState << 1) | pinAState;
         if (state != (lastPinStates & 0x3)) {
             lastPinStates = (lastPinStates << 2) | state;
@@ -68,9 +67,39 @@ public:
             angle = (angle - 10 + maxAngle) % maxAngle;
         }
     }
+private:
+    const int pinA;
+    const int pinB;
+};
+
+class Lever {
+public:
+    Lever(int pin, bool hold_tap) : _pin(pin), hold(hold_tap), change(false), value(false) {
+        pinMode(_pin, INPUT);
+    }
+
+    bool getValue() {
+        bool current_state = digitalRead(_pin) == HIGH;
+
+        if (!hold) {
+            value = current_state != change;
+            change = current_state;
+        } else {
+            value = current_state;
+        }
+
+        return value;
+    }
+
+private:
+    const int _pin;
+    bool hold;
+    bool change;
+    bool value;
 };
 
 // Pin-Definitionen
+const int numLevers = 4;
 const int numEncoders = 3;
 const int encoderPins[numEncoders][2] = {
     {2, 3},
@@ -85,13 +114,20 @@ Encoder encoders[numEncoders] = {
     Encoder(encoderPins[2][0], encoderPins[2][1])
 };
 
+Lever levers[numLevers] = {
+    Lever(8, false),
+    Lever(9, false),
+    Lever(10, false),
+    Lever(11, false)
+};
+
 void setup() {
     Serial.begin(9600);
 }
 
 void loop() {
-    for (int i = 0; i < numEncoders; ++i) {
-        encoders[i].checkPins(digitalRead(encoderPins[i][0]), digitalRead(encoderPins[i][1]));
+    for (int i = 0; i < numEncoders; i++) {
+        encoders[i].checkPins();
 
         EncoderEvent event;
         if (encoders[i].read(&event)) {
@@ -102,5 +138,12 @@ void loop() {
             Serial.print(": ");
             Serial.println(encoders[i].getAngle());
         }
+    }
+
+    for (int i = 0; i < numLevers; i++) {
+        Serial.print("Lever ");
+        Serial.print(i + 1);
+        Serial.print(": ");
+        Serial.println(levers[i].getValue());
     }
 }
