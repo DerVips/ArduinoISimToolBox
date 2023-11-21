@@ -1,0 +1,21 @@
+# Ignoriere kompilierte Binärdateien
+*.hex
+*.elf
+
+# Ignoriere temporäre Dateien und Verzeichnisse
+*.swp
+*~
+.DS_Store
+
+# Ignoriere den Arduino-Build-Ordner
+/build/
+
+# Ignoriere IDE-spezifische Dateien
+.vscode/
+.idea/
+
+*.lock
+*.vsidx
+*.sqlite
+*.json
+*.wsuo
