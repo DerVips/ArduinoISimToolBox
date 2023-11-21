@@ -1,19 +1,21 @@
-#include <arduino.h>
+#include <Arduino.h>
 
-struct EC11Event {
+struct EncoderEvent {
     enum Type { None = 0, StepCW, StepCCW };
     Type type;
     uint8_t count;
 
-    EC11Event() : type(None), count(0) {};
+    EncoderEvent() : type(None), count(0) {};
 };
 
-class EC11 {
+class Encoder {
 private:
     uint8_t lastPinStates;
-    EC11Event event;
+    EncoderEvent event;
+    int angle;
+    const int maxAngle;
 
-    void addEvent(EC11Event::Type type) {
+    void addEvent(EncoderEvent::Type type) {
         if (event.type == type) {
             if (event.count != 0xFF) {
                 event.count++;
@@ -25,21 +27,25 @@ private:
     }
 
 public:
-    EC11() : lastPinStates(0) {};
+    Encoder(int pinA, int pinB, int maxAngleValue = 360) : 
+        lastPinStates(0), angle(0), maxAngle(maxAngleValue) {
+        pinMode(pinA, INPUT);
+        pinMode(pinB, INPUT);
+    }
 
     void checkPins(bool pinAState, bool pinBState) {
         uint8_t state = (pinBState << 1) | pinAState;
         if (state != (lastPinStates & 0x3)) {
             lastPinStates = (lastPinStates << 2) | state;
             if (lastPinStates == 0b10000111) {
-                addEvent(EC11Event::StepCCW);
+                addEvent(EncoderEvent::StepCCW);
             } else if (lastPinStates == 0b01001011) {
-                addEvent(EC11Event::StepCW);
+                addEvent(EncoderEvent::StepCW);
             }
         }
     }
 
-    bool read(EC11Event *e) {
+    bool read(EncoderEvent *e) {
         noInterrupts();
         if (event.count == 0) {
             interrupts();
@@ -50,43 +56,51 @@ public:
         interrupts();
         return true;
     }
+
+    int getAngle() const {
+        return angle;
+    }
+
+    void processEvent(const EncoderEvent& event) {
+        if (event.type == EncoderEvent::StepCW) {
+            angle = (angle + 10) % maxAngle;
+        } else if (event.type == EncoderEvent::StepCCW) {
+            angle = (angle - 10 + maxAngle) % maxAngle;
+        }
+    }
 };
 
 // Pin-Definitionen
-const int pinEncoderA = 2;
-const int pinEncoderB = 3;
-const int maxAngle = 360; // Maximale Winkelposition (Grad)
+const int numEncoders = 3;
+const int encoderPins[numEncoders][2] = {
+    {2, 3},
+    {4, 5},
+    {6, 7}
+};
 
-// Variablen
-int angle = 0;
-
-// EC11-Objekt erstellen
-EC11 myEncoder;
+// Encoder-Objekte erstellen
+Encoder encoders[numEncoders] = {
+    Encoder(encoderPins[0][0], encoderPins[0][1]),
+    Encoder(encoderPins[1][0], encoderPins[1][1]),
+    Encoder(encoderPins[2][0], encoderPins[2][1])
+};
 
 void setup() {
-    pinMode(pinEncoderA, INPUT);
-    pinMode(pinEncoderB, INPUT);
     Serial.begin(9600);
 }
 
 void loop() {
-    // Zustand der Pins überprüfen
-    myEncoder.checkPins(digitalRead(pinEncoderA), digitalRead(pinEncoderB));
+    for (int i = 0; i < numEncoders; ++i) {
+        encoders[i].checkPins(digitalRead(encoderPins[i][0]), digitalRead(encoderPins[i][1]));
 
-    // Ereignisse lesen
-    EC11Event event;
-    if (myEncoder.read(&event)) {
-        // Ereignis verarbeiten
-        if (event.type == EC11Event::StepCW) {
-            angle = (angle + 10) % maxAngle; // Beispiel: Schritte im Uhrzeigersinn erhöhen den Winkel um 10 Grad
-        } else if (event.type == EC11Event::StepCCW) {
-            angle = (angle - 10 + maxAngle) % maxAngle; // Beispiel: Schritte gegen den Uhrzeigersinn verringern den Winkel um 10 Grad
+        EncoderEvent event;
+        if (encoders[i].read(&event)) {
+            encoders[i].processEvent(event);
+
+            Serial.print("Winkel Encoder ");
+            Serial.print(i + 1);
+            Serial.print(": ");
+            Serial.println(encoders[i].getAngle());
         }
-
-        // Winkelinformation ausgeben
-        Serial.print("Aktueller Winkel: ");
-        Serial.println(angle);
     }
-
-    // Hier können weitere Anweisungen stehen...
 }
