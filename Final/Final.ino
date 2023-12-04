@@ -113,36 +113,22 @@ class RotaryEncoder {
     const int min = 0;
 
     Encoder encoder;
-    int newPosition;
-    int lastPosition;
-    int steps;
     int PinA;
     int PinB;
-    int slider;
 
   public:
-    RotaryEncoder(int pinA, int pinB, int slider) : encoder(pinA, pinB) {
-      steps = (max+min)/2;
-      newPosition = 0;
-      lastPosition = 0;
+    RotaryEncoder(int pinA, int pinB) : encoder(pinA, pinB) {
       this->PinA = pinA;
       this->PinB = pinB;
-      this->slider = slider;
     }
 
     int process()
     {
-      int newPosition = encoder.read()/4;
-      newPosition = newPosition<-127 ? -127 : newPosition;
-      int delta = newPosition - lastPosition;
-
-      if (delta != 0) {
-        steps += delta;
-        steps = steps>127 ? 127 : steps;
-        lastPosition = newPosition;
-      }
-
-      return steps;
+      int Position = encoder.read();
+      Position = Position<min ? min : Position;
+      Position = Position>max ? max : Position;
+      
+      return Position;
     }
 };
 
@@ -160,29 +146,29 @@ Button buttons[numButtons] = {
 };
 
 RotaryEncoder encoder[numEncoders] = {
-  RotaryEncoder(encoderPins[0][0],encoderPins[0][1],0),
-  RotaryEncoder(encoderPins[1][0],encoderPins[1][1],1),
-  RotaryEncoder(encoderPins[2][0],encoderPins[2][1],2)
+  RotaryEncoder(encoderPins[0][0],encoderPins[0][1]),
+  RotaryEncoder(encoderPins[1][0],encoderPins[1][1]),
+  RotaryEncoder(encoderPins[2][0],encoderPins[2][1])
 };
 
 #include <Joystick.h>
 
 Joystick_ Joystick(
-0x05,                   /* HID Report ID: */ 
-JOYSTICK_TYPE_GAMEPAD,  /* Joystick Typ: */ 
-numButtons+numLevers,   /* Anzahl der Buttons: */ 
-0,                      /* Anzahl der Hat Switches: */
-false,                  /* X-Achse: */ 
-false,                  /* Y-Achse: */ 
-false,                  /* Z-Achse: */ 
-false,                  /* X-Achsenrotation: */ 
-false,                  /* Y-Achsenrotation: */ 
-false,                  /* Z-Achsenrotation: */ 
-true,                   /* Rudder: */
-true,                   /* Throttle: */ 
-true,                   /* Accelerator: */ 
-false,                  /* Brake: */ 
-false                   /* Steering: */ 
+  0x05,                   /* HID Report ID: */ 
+  JOYSTICK_TYPE_GAMEPAD,  /* Joystick Typ: */ 
+  numButtons+numLevers,   /* Anzahl der Buttons: */ 
+  0,                      /* Anzahl der Hat Switches: */
+  false,                  /* X-Achse: */ 
+  false,                  /* Y-Achse: */ 
+  false,                  /* Z-Achse: */ 
+  true,                   /* X-Achsenrotation: */ 
+  true,                   /* Y-Achsenrotation: */ 
+  true,                   /* Z-Achsenrotation: */ 
+  false,                  /* Rudder: */
+  false,                  /* Throttle: */ 
+  false,                  /* Accelerator: */ 
+  false,                  /* Brake: */ 
+  false                   /* Steering: */ 
 );
 
 void setup(){
@@ -191,14 +177,14 @@ void setup(){
 
 void loop() {
   for(int i = 0; i < numLevers; i++){
-    Joystick.setButton(i+1, levers[i].process());
+    Joystick.setButton(i, levers[i].process());
   }
 
-  for(int i = numLevers; i < numButtons; i++){
-    Joystick.setButton(i+1 + numLevers, buttons[i].process());
+  for(int i = 0; i < numButtons; i++){
+    Joystick.setButton(i + numLevers, buttons[i].process());
   }
 
-  Joystick.setRudder(encoder[0].process());
-  Joystick.setThrottle(encoder[1].process());
-  Joystick.setAccelerator(encoder[2].process());
+  Joystick.setRxAxis(encoder[0].process());
+  Joystick.setRyAxis(encoder[1].process());
+  Joystick.setRzAxis(encoder[2].process());
 }
