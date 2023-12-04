@@ -9,6 +9,7 @@
 
 # Ignoriere den Arduino-Build-Ordner
 /build/
+/.vs/
 
 # Ignoriere IDE-spezifische Dateien
 .vscode/
