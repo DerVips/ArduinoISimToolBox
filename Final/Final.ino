@@ -16,7 +16,7 @@ const int leverPins[numLevers+1] = {
   3   // <- 4
 };
 const int buttonPins[numButtons-1] = {
-  5, // <- 5  <- Hold funktion
+  5, // <- 5 
   4  // <- 6
 };
 const int encoderPins[numEncoders][2] = {
@@ -33,41 +33,44 @@ class Button {
     bool hold;
     bool isPressed;
     long cooldown;
-    Joystick_& joystick;
+    int latestState;
 
   public:
-    Button(int pin, int keyNum, bool hold, Joystick_& joystick) : joystick(joystick) {
+    Button(int pin, int keyNum, bool hold) {
       this->pin = pin;
       this->keyNum = keyNum;
       this->hold = hold;
       this->isPressed = false;
+      latestState = 0;
+      
       cooldown = millis();
 
       pinMode(pin, INPUT);
     }
 
-    void process(){
+    int process(){
       bool buttonState = digitalRead(pin) == HIGH;
 
       if(buttonState){
         if(hold && !isPressed){
-          joystick.setButton(keyNum, true);
+          latestState = 1;
           isPressed = true;
         }else if(!hold && !isPressed){
-          joystick.setButton(keyNum, true);
+          latestState = 1;
           isPressed = true;
           cooldown = millis();
         }else if(isPressed && !hold && cooldown + 50 < millis()){
-          joystick.setButton(keyNum, false);;
+          latestState = 0;
         }
       }else if(isPressed){
         if(!buttonState && hold){
-          joystick.setButton(keyNum, false);
+          latestState = 0;
           isPressed = false;
         }else if(!buttonState && !hold){
           isPressed = false;
         }
       }
+      return latestState;
     }
 };
 
@@ -77,33 +80,38 @@ class Lever {
     int keyNum;
     bool isActive;
     long cooldown;
-    Joystick_& joystick;
+    int latestState;
   
   public:
-    Lever(int pin, int keyNum, Joystick_& joystick) : joystick(joystick) {
+    Lever(int pin, int keyNum) {
       this->pin = pin;
       this->keyNum = keyNum;
+      latestState = 0;
       cooldown = millis();
 
       pinMode(pin, INPUT);
       this->isActive = digitalRead(pin) == HIGH;
     }
 
-    void process(){
+    int process(){
       bool leverState = digitalRead(pin) == HIGH;
 
       if(leverState != isActive){
         cooldown = millis();
         isActive = leverState;
-        joystick.setButton(keyNum, true);
+        latestState = 1;
       }else if(cooldown + 50 < millis()){
-        joystick.setButton(keyNum, false);
+        latestState = 0;
       }
+      return latestState;
     }
 };
 
 class RotaryEncoder {
   private:
+    const int max = 1023;
+    const int min = 0;
+
     Encoder encoder;
     int newPosition;
     int lastPosition;
@@ -111,11 +119,10 @@ class RotaryEncoder {
     int PinA;
     int PinB;
     int slider;
-    Joystick_& joystick;
 
   public:
-    RotaryEncoder(int pinA, int pinB, int slider, Joystick_& joystick) : encoder(pinA, pinB),  joystick(joystick){
-      steps = 0;
+    RotaryEncoder(int pinA, int pinB, int slider) : encoder(pinA, pinB) {
+      steps = (max+min)/2;
       newPosition = 0;
       lastPosition = 0;
       this->PinA = pinA;
@@ -123,43 +130,33 @@ class RotaryEncoder {
       this->slider = slider;
     }
 
-    void process()
+    int process()
     {
       int newPosition = encoder.read()/4;
-      newPosition = newPosition<0 ? 0 : newPosition;
+      newPosition = newPosition<-127 ? -127 : newPosition;
       int delta = newPosition - lastPosition;
 
       if (delta != 0) {
         steps += delta;
-        steps = steps>1023 ? 1023 : steps;
+        steps = steps>127 ? 127 : steps;
         lastPosition = newPosition;
       }
 
-      joystick.setSlider(slider, sliderValue);
+      return steps;
     }
 };
 
-Joystick_ Joystick(
-  JOYSTICK_DEFAULT_REPORT_ID,
-  JOYSTICK_TYPE_JOYSTICK,
-  7,
-  3,
-  false, false, false, false, false, false,
-  false, false, false, false, false, false,
-  false, false, false, false, false, false
-);
-
 Lever levers[numLevers] = {
-  Lever(leverPins[0],0,Joystick),
-  Lever(leverPins[1],1,Joystick),
-  Lever(leverPins[3],3,Joystick),
-  Lever(leverPins[4],4,Joystick)
+  Lever(leverPins[0],0),
+  Lever(leverPins[1],1),
+  Lever(leverPins[3],3),
+  Lever(leverPins[4],4)
 };
 
 Button buttons[numButtons] = {
-  Button(buttonPins[0],5,true,Joystick),
-  Button(buttonPins[1],6,false,Joystick),
-  Button(leverPins[2],2,false,Joystick)
+  Button(buttonPins[0],5,true),
+  Button(buttonPins[1],6,false),
+  Button(leverPins[2],2,false)
 };
 
 RotaryEncoder encoder[numEncoders] = {
@@ -168,21 +165,40 @@ RotaryEncoder encoder[numEncoders] = {
   RotaryEncoder(encoderPins[2][0],encoderPins[2][1],2)
 };
 
+#include <Joystick.h>
+
+Joystick_ Joystick(
+0x05,                   /* HID Report ID: */ 
+JOYSTICK_TYPE_GAMEPAD,  /* Joystick Typ: */ 
+numButtons+numLevers,   /* Anzahl der Buttons: */ 
+0,                      /* Anzahl der Hat Switches: */
+false,                  /* X-Achse: */ 
+false,                  /* Y-Achse: */ 
+false,                  /* Z-Achse: */ 
+false,                  /* X-Achsenrotation: */ 
+false,                  /* Y-Achsenrotation: */ 
+false,                  /* Z-Achsenrotation: */ 
+true,                   /* Rudder: */
+true,                   /* Throttle: */ 
+true,                   /* Accelerator: */ 
+false,                  /* Brake: */ 
+false                   /* Steering: */ 
+);
+
 void setup(){
-  Joystick.begin();
+  Joystick.begin(true);
 }
 
 void loop() {
   for(int i = 0; i < numLevers; i++){
-    levers[i].process();
+    Joystick.setButton(i+1, levers[i].process());
   }
 
-  for(int i = 0; i < numButtons; i++){
-    buttons[i].process();
+  for(int i = numLevers; i < numButtons; i++){
+    Joystick.setButton(i+1 + numLevers, buttons[i].process());
   }
 
-  for(int i = 0; i < numEncoders; i++){
-    encoder[i].process();
-  }
-  Joystick.send();
+  Joystick.setRudder(encoder[0].process());
+  Joystick.setThrottle(encoder[1].process());
+  Joystick.setAccelerator(encoder[2].process());
 }
