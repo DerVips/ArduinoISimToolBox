@@ -1,23 +1,21 @@
 #include <Arduino.h>
-#include <Keyboard.h>
 #include <Encoder.h>
+#include <Joystick.h>
 
 //Settings------------------------START
-const int numButtons = 2;
-const int numLevers = 5;
+const int numButtons = 3;
+const int numLevers = 4;
 const int numEncoders = 3;
 const int numKeys = 7;
 
-const char keys[] = {'0','1','2','3','4','5','6'};
-
-const int leverPins[numLevers] = {
+const int leverPins[numLevers+1] = {
   9,  // <- 0
   8,  // <- 1
   7,  // <- 2
   6,  // <- 3
   3   // <- 4
 };
-const int buttonPins[numButtons] = {
+const int buttonPins[numButtons-1] = {
   5, // <- 5  <- Hold funktion
   4  // <- 6
 };
@@ -31,16 +29,19 @@ const int encoderPins[numEncoders][2] = {
 class Button {
   private:
     int pin;
-    char keyboardKey;
+    int keyNum;
     bool hold;
     bool isPressed;
+    long cooldown;
+    Joystick_& joystick;
 
   public:
-    Button(int pin, char keyboardKey, bool hold) {
+    Button(int pin, int keyNum, bool hold, Joystick_& joystick) : joystick(joystick) {
       this->pin = pin;
-      this->keyboardKey = keyboardKey;
+      this->keyNum = keyNum;
       this->hold = hold;
       this->isPressed = false;
+      cooldown = millis();
 
       pinMode(pin, INPUT);
     }
@@ -50,14 +51,20 @@ class Button {
 
       if(buttonState){
         if(hold && !isPressed){
-          Keyboard.press(keyboardKey);
+          joystick.setButton(keyNum, true);
           isPressed = true;
-        }else if(!hold){
-          Keyboard.write(keyboardKey);
+        }else if(!hold && !isPressed){
+          joystick.setButton(keyNum, true);
+          isPressed = true;
+          cooldown = millis();
+        }else if(isPressed && !hold && cooldown + 50 < millis()){
+          joystick.setButton(keyNum, false);;
         }
       }else if(isPressed){
         if(!buttonState && hold){
-          Keyboard.release(keyboardKey);
+          joystick.setButton(keyNum, false);
+          isPressed = false;
+        }else if(!buttonState && !hold){
           isPressed = false;
         }
       }
@@ -67,13 +74,16 @@ class Button {
 class Lever {
   private:
     int pin;
-    char keyboardKey;
+    int keyNum;
     bool isActive;
+    long cooldown;
+    Joystick_& joystick;
   
   public:
-    Lever(int pin, char keyboardKey){
+    Lever(int pin, int keyNum, Joystick_& joystick) : joystick(joystick) {
       this->pin = pin;
-      this->keyboardKey = keyboardKey;
+      this->keyNum = keyNum;
+      cooldown = millis();
 
       pinMode(pin, INPUT);
       this->isActive = digitalRead(pin) == HIGH;
@@ -83,8 +93,11 @@ class Lever {
       bool leverState = digitalRead(pin) == HIGH;
 
       if(leverState != isActive){
+        cooldown = millis();
         isActive = leverState;
-        Keyboard.write(keyboardKey);
+        joystick.setButton(keyNum, true);
+      }else if(cooldown + 50 < millis()){
+        joystick.setButton(keyNum, false);
       }
     }
 };
@@ -97,52 +110,67 @@ class RotaryEncoder {
     int steps;
     int PinA;
     int PinB;
+    int slider;
+    Joystick_& joystick;
 
   public:
-    RotaryEncoder(int pinA, int pinB) : encoder(pinA, pinB) {
+    RotaryEncoder(int pinA, int pinB, int slider, Joystick_& joystick) : encoder(pinA, pinB),  joystick(joystick){
       steps = 0;
       newPosition = 0;
       lastPosition = 0;
       this->PinA = pinA;
       this->PinB = pinB;
+      this->slider = slider;
     }
 
     void process()
     {
-      int newPosition = encoder.read();
+      int newPosition = encoder.read()/4;
+      newPosition = newPosition<0 ? 0 : newPosition;
       int delta = newPosition - lastPosition;
 
       if (delta != 0) {
         steps += delta;
+        steps = steps>1023 ? 1023 : steps;
         lastPosition = newPosition;
       }
 
-      Serial.print(String(PinA) + String(PinB) + ":");
-      Serial.print(steps);
-      Serial.println(",");
+      joystick.setSlider(slider, sliderValue);
     }
 };
 
+Joystick_ Joystick(
+  JOYSTICK_DEFAULT_REPORT_ID,
+  JOYSTICK_TYPE_JOYSTICK,
+  7,
+  3,
+  false, false, false, false, false, false,
+  false, false, false, false, false, false,
+  false, false, false, false, false, false
+);
+
 Lever levers[numLevers] = {
-  Lever(leverPins[0],keys[0]),
-  Lever(leverPins[1],keys[1]),
-  Lever(leverPins[2],keys[2]),
-  Lever(leverPins[3],keys[3]),
-  Lever(leverPins[4],keys[4])
+  Lever(leverPins[0],0,Joystick),
+  Lever(leverPins[1],1,Joystick),
+  Lever(leverPins[3],3,Joystick),
+  Lever(leverPins[4],4,Joystick)
 };
 
 Button buttons[numButtons] = {
-  Button(buttonPins[0],keys[5],true),
-  Button(buttonPins[1],keys[6],false)
+  Button(buttonPins[0],5,true,Joystick),
+  Button(buttonPins[1],6,false,Joystick),
+  Button(leverPins[2],2,false,Joystick)
 };
 
 RotaryEncoder encoder[numEncoders] = {
-  RotaryEncoder(encoderPins[0][0],encoderPins[0][1]),
-  RotaryEncoder(encoderPins[1][0],encoderPins[1][1]),
-  RotaryEncoder(encoderPins[2][0],encoderPins[2][1])
+  RotaryEncoder(encoderPins[0][0],encoderPins[0][1],0),
+  RotaryEncoder(encoderPins[1][0],encoderPins[1][1],1),
+  RotaryEncoder(encoderPins[2][0],encoderPins[2][1],2)
 };
 
-void setup(){Serial.begin(9600);}
+void setup(){
+  Joystick.begin();
+}
 
 void loop() {
   for(int i = 0; i < numLevers; i++){
@@ -156,4 +184,5 @@ void loop() {
   for(int i = 0; i < numEncoders; i++){
     encoder[i].process();
   }
+  Joystick.send();
 }
