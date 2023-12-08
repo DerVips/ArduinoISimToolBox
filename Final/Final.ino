@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <Encoder.h>
-#include <Joystick.h>
+#include <Keyboard.h>
 
 //Settings------------------------START
 const int numButtons = 3;
@@ -29,162 +29,146 @@ const int encoderPins[numEncoders][2] = {
 class Button {
   private:
     int pin;
-    int keyNum;
     bool hold;
     bool isPressed;
     long cooldown;
-    int latestState;
+    char TYPO;
 
   public:
-    Button(int pin, int keyNum, bool hold) {
+    Button(int pin, bool hold, char TYPO) {
       this->pin = pin;
-      this->keyNum = keyNum;
       this->hold = hold;
-      this->isPressed = false;
-      latestState = 0;
+      this->TYPO = TYPO;
       
       cooldown = millis();
-
       pinMode(pin, INPUT);
     }
 
-    int process(){
+    void process(){
       bool buttonState = digitalRead(pin) == HIGH;
 
       if(buttonState){
         if(hold && !isPressed){
-          latestState = 1;
+          Keyboard.press(TYPO);
           isPressed = true;
         }else if(!hold && !isPressed){
-          latestState = 1;
+          Keyboard.press(TYPO);
           isPressed = true;
           cooldown = millis();
         }else if(isPressed && !hold && cooldown + 50 < millis()){
-          latestState = 0;
+          Keyboard.release(TYPO);
         }
       }else if(isPressed){
         if(!buttonState && hold){
-          latestState = 0;
+          Keyboard.release(TYPO);
           isPressed = false;
         }else if(!buttonState && !hold){
           isPressed = false;
         }
       }
-      return latestState;
     }
 };
 
 class Lever {
   private:
     int pin;
-    int keyNum;
     bool isActive;
     long cooldown;
-    int latestState;
+    char TYPO;
   
   public:
-    Lever(int pin, int keyNum) {
+    Lever(int pin, char TYPO) {
       this->pin = pin;
-      this->keyNum = keyNum;
-      latestState = 0;
+      this->TYPO = TYPO;
       cooldown = millis();
 
       pinMode(pin, INPUT);
       this->isActive = digitalRead(pin) == HIGH;
     }
 
-    int process(){
+    void process(){
       bool leverState = digitalRead(pin) == HIGH;
 
       if(leverState != isActive){
         cooldown = millis();
         isActive = leverState;
-        latestState = 1;
+        Keyboard.press(TYPO);
       }else if(cooldown + 50 < millis()){
-        latestState = 0;
+        Keyboard.release(TYPO);
       }
-      return latestState;
     }
 };
 
 class RotaryEncoder {
   private:
-    const int max = 1023;
-    const int min = 0;
-
     Encoder encoder;
+    int lastPosition;
+    char TYPO_UP;
+    char TYPO_DOWN;
     int PinA;
     int PinB;
 
   public:
-    RotaryEncoder(int pinA, int pinB) : encoder(pinA, pinB) {
+    RotaryEncoder(int pinA, int pinB, char TYPO_UP, char TYPO_DOWN) : encoder(pinA, pinB) {
       this->PinA = pinA;
       this->PinB = pinB;
+      this->TYPO_UP = TYPO_UP;
+      this->TYPO_DOWN = TYPO_DOWN;
+      lastPosition = 0;
     }
 
-    int process()
+    void process()
     {
       int Position = encoder.read();
-      Position = Position<min ? min : Position;
-      Position = Position>max ? max : Position;
+      Position /= 4;
       
-      return Position;
+      if(lastPosition<Position){
+        while (lastPosition++<Position)
+        {
+          Keyboard.write(TYPO_UP);
+        }
+      }else{
+        while (lastPosition-->Position)
+        {
+          Keyboard.write(TYPO_DOWN);
+        }
+      }
     }
 };
 
 Lever levers[numLevers] = {
-  Lever(leverPins[0],0),
-  Lever(leverPins[1],1),
-  Lever(leverPins[3],3),
-  Lever(leverPins[4],4)
+  Lever(leverPins[0],'ÿ'),
+  Lever(leverPins[1],'þ'),
+  Lever(leverPins[3],'ý'),
+  Lever(leverPins[4],'ü')
 };
 
 Button buttons[numButtons] = {
-  Button(buttonPins[0],5,true),
-  Button(buttonPins[1],6,false),
-  Button(leverPins[2],2,false)
+  Button(buttonPins[0],true,'û'),
+  Button(buttonPins[1],false,'ú'),
+  Button(leverPins[2],false,'ù')
 };
 
 RotaryEncoder encoder[numEncoders] = {
-  RotaryEncoder(encoderPins[0][0],encoderPins[0][1]),
-  RotaryEncoder(encoderPins[1][0],encoderPins[1][1]),
-  RotaryEncoder(encoderPins[2][0],encoderPins[2][1])
+  RotaryEncoder(encoderPins[0][0],encoderPins[0][1],'ø','÷'),
+  RotaryEncoder(encoderPins[1][0],encoderPins[1][1],'ö','õ'),
+  RotaryEncoder(encoderPins[2][0],encoderPins[2][1],'ô','ó')
 };
 
-#include <Joystick.h>
-
-Joystick_ Joystick(
-  0x05,                   /* HID Report ID: */ 
-  JOYSTICK_TYPE_GAMEPAD,  /* Joystick Typ: */ 
-  numButtons+numLevers,   /* Anzahl der Buttons: */ 
-  0,                      /* Anzahl der Hat Switches: */
-  false,                  /* X-Achse: */ 
-  false,                  /* Y-Achse: */ 
-  false,                  /* Z-Achse: */ 
-  true,                   /* X-Achsenrotation: */ 
-  true,                   /* Y-Achsenrotation: */ 
-  true,                   /* Z-Achsenrotation: */ 
-  false,                  /* Rudder: */
-  false,                  /* Throttle: */ 
-  false,                  /* Accelerator: */ 
-  false,                  /* Brake: */ 
-  false                   /* Steering: */ 
-);
-
 void setup(){
-  Joystick.begin(true);
+  Keyboard.begin();
 }
 
 void loop() {
   for(int i = 0; i < numLevers; i++){
-    Joystick.setButton(i, levers[i].process());
+    levers[i].process();
   }
 
   for(int i = 0; i < numButtons; i++){
-    Joystick.setButton(i + numLevers, buttons[i].process());
+    buttons[i].process();
   }
 
-  Joystick.setRxAxis(encoder[0].process());
-  Joystick.setRyAxis(encoder[1].process());
-  Joystick.setRzAxis(encoder[2].process());
+  for(int i = 0; i < numEncoders; i++){
+    encoder[i].process();
+  }
 }
