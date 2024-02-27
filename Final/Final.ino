@@ -119,16 +119,16 @@ class RotaryEncoder {
 
     void process()
     {
-      int Position = encoder.read();
-      Position /= 4;
+      int position = encoder.read();
+      position /= 4;
       
-      if(lastPosition<Position){
-        while (lastPosition++<Position)
+      if(lastPosition<position){
+        while (lastPosition++<position)
         {
           Keyboard.write(TYPO_UP);
         }
-      }else{
-        while (lastPosition-->Position)
+      }else if(lastPosition>position){
+        while (lastPosition-->position)
         {
           Keyboard.write(TYPO_DOWN);
         }
@@ -171,4 +171,6 @@ void loop() {
   for(int i = 0; i < numEncoders; i++){
     encoder[i].process();
   }
+
+  delay(1000);
 }
